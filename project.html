@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+    <style>
+        div.dept_buttons div {
+            background-color: white ;
+            padding: 3px;
+            margin: 7px;
+            border-style: solid;
+            border-width: 1px;
+            border-color: black;
+        }
+        div.dept_buttons {
+            position: fixed;
+            top: 50px;
+            left: 50px;
+        }
+        h2 {
+            color: darkslateblue;
+        }
+    </style>
+
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://dimplejs.org/dist/dimple.v2.0.0.min.js"></script>
+
+    <script type="text/javascript"> 
+      format = d3.time.format("%d-%m-%Y (%H:%M h)");
+ 
+      function draw(geo_data) {
+	  //Defines that JavaScript code should be executed in "strict mode".
+        "use strict";
+		//Declare static varaiables for SVG
+        var margin = 75,
+            width = 1400 - margin,
+            height = 600 - margin;
+
+        var title = d3.select("body")
+                    .append("h2")
+                    .text("Attrition Statistics")
+                    .style("text-align", "center");
+        
+        var note = d3.select("body")
+                    .append("p")
+                    .text("Animation doesn't fully work - here's the best that could be done")
+                    .style("text-align", "center")
+                    .style("font-style", "italic")
+                    .append("p")
+                    .text("Wanted the bubbles to change but they aren't showing up, so highlighted the states instead")
+                    .style("text-align", "center")
+                    .style("font-style", "italic");
+
+        var staticmap = d3.select("body")
+                .append("a")
+                .attr({"href": "staticmap.html"})
+                .append("p")
+                .text("Click here to view the static map that has a better overview")
+                .style("text-align", "center")
+                .style("font-style", "italic");
+
+        //map svg
+        var svg = d3.select("body")
+            .append("svg")
+            .attr("width", width + margin)
+            .attr("height", height + margin)
+            .append('g')
+            .attr('class', 'map');
+
+
+        //mercator projector
+        //scale() used to zoom
+        //translate() used to center map
+        var merc_projection = d3.geo.mercator().scale(450).translate([width / 0.9, height / 0.75]);
+        //sets current projection of positions array
+
+        var path = d3.geo.path().projection(merc_projection);
+
+        var map = svg.selectAll('path')
+                  .data(geo_data.features)
+                  .enter()
+                  .append('path')
+                  .attr('d', path)
+                  .style('fill', 'Thistle')
+                  .style('stroke', 'black')
+                  .style('stroke-width', 0.5);
+
+        
+        d3.csv("HR-Employee-Attrition.csv", plot_attrition);
+
+        function plot_attrition(data) {
+            //map stuff
+            function data_by_department(leaves) {
+                var total = d3.sum(leaves, function(d) { return d['EmployeeCount']; });
+
+                //convert lat and long into pixel values
+                var pixel_coords = leaves.map(function (d) { return merc_projection([+d.Longitude, +d.Latitude]); });
+
+                //get avg lat and avg long pixel values
+                var avg_x = d3.mean(pixel_coords, function(d) { return d[0]; });
+                var avg_y = d3.mean(pixel_coords, function(d) { return d[1]; });
+
+                // var departments = d3.set();
+                // leaves.forEach(function(d) { departments.add(d['Department']); });
+
+                //console.log(departments.values());
+
+                var locations = d3.set();
+                leaves.forEach(function(d) { locations.add(d['Location']); });
+
+                return {
+                    'totalEmployees' : total,
+                    'x' : avg_x,
+                    'y' : avg_y,
+                    //'Departments' : departments.values()
+                    'locations' : locations.values()
+                };
+
+            } //end function
+
+            //code to create dots
+            var map_data = d3.nest()
+                                .key(function(d) { return d['Department']; })
+                                .rollup(data_by_department)
+                                .entries(data);
+            
+            console.log(map_data);
+        
+            var EmployeeCount_extent = d3.extent(map_data, function(d) { return d.values['totalEmployees']});
+            var radius_scale = d3.scale.sqrt().domain(EmployeeCount_extent).range([0, 12]);
+
+            function key_func(d) { 
+                return d['key']; 
+            };
+
+            //display data
+            svg.append('g')
+            .attr("class", "circle")
+            .selectAll("circle")
+            .data(map_data, key_func)
+            .enter()
+            .append("circle")
+            .attr('cx', function(d) { return d.values['x']; })
+            .attr('cy', function(d) { return d.values['y']; })
+            .attr('r', function(d) { 
+                //console.log(d.values['totalEmployees']);
+                return radius_scale(d.values['totalEmployees']); 
+            })
+            .attr('fill', 'OrangeRed')
+            .attr('opacity', '0.4')
+            .attr('stroke', 'black');
+
+            function refresh(department) {
+                var filtered_agg_data = map_data.filter(function (d) {
+                    //console.log(d['key']);
+                    return d['key'] === department;
+                });
+
+                console.log(filtered_agg_data);
+
+                title.text(department + " Department Attrition Statistics");
+
+                var circles = svg.selectAll('circle').data(filtered_agg_data, key_func);
+
+                circles.exit().remove();
+
+                circles.enter()
+                        .append('circle')
+                        .transition()
+                        .duration(800)
+                        .attr('cx', function (d) { return d.values['x']; })
+                        .attr('cy', function(d) {return d.values['y']; })
+                        .attr('r', function(d) { return radius_scale(d.values['totalEmployees']); })
+                        .attr('fill', 'OrangeRed')
+                        .attr('opacity', '0.4')
+                        .attr('stroke', 'black');;
+
+                var loc = filtered_agg_data[0].values['locations'];
+			
+			    svg.selectAll('path')
+				.transition()
+				.duration(500)
+				.style('fill', function(d){
+					if(loc.indexOf(d.properties.name)!==-1){
+							return "Thistle";
+						}else{
+							return "white";
+						}
+						});
+
+            }
+            var depts = ["Sales", "Research & Development", "Human Resources"];
+
+            var index = 0;
+
+            var refresh_Interval = setInterval(function(){
+                refresh(depts[index]);
+                index++;
+                
+                if(index>= depts.length){
+                    clearInterval(refresh_Interval);
+                    
+                    var buttons = d3.select("body")
+                            .append("div")
+                            .attr("class", "dept_buttons")
+                            .selectAll("div")
+                            .data(depts)
+                            .enter()
+                            .append("div")
+                            .text(function(d) {
+                                return d;
+                            });
+
+                    buttons.on("click", function(d) {
+                        d3.select(".dept_buttons")
+                        .selectAll("div")
+                        .transition()
+                        .duration(800)
+                        .style("color", "black")
+                        .style("background", "white");
+
+                        d3.select(this)
+                        .transition()
+                        .duration(800)
+                        .style("background", "lightBlue")
+                        .style("color", "black");
+                        refresh(d);
+                    });
+                }
+                },1000); 
+
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////
+            //scatterplot svg
+
+            d3.select("body")
+                .append("h2")
+                .text("Percentage Salary Hikes Across Number of Employees")
+                .style("text-align", "center");
+
+            var scattersvg = d3.select("body")
+                        .append("svg")
+                        .attr("id", "scatter")
+                        .attr("width", width + margin)
+                        .attr("height", height + margin);
+
+            //x axis
+            var groupByPercentSalaryHike = d3.nest().key(function(d) { return d['PercentSalaryHike']; })
+                                            .rollup(function(d) {
+                                                return d3.sum(d, function (d) { return d['EmployeeCount']; })
+                                            })
+                                            .entries(data);
+                
+                
+            var employeeCount_extent = d3.extent(groupByPercentSalaryHike);
+            //console.log(employeeCount_extent[1].values);
+
+            var employeeCount_scale = d3.scale.linear()
+                                        .range([margin, width])
+                                        .domain([0, employeeCount_extent[1].values]);
+            
+            var axisX = d3.svg.axis().scale(employeeCount_scale);
+
+            //y axis
+            var percentSalaryHire_extent = d3.extent(data, function(d) {
+                return d['PercentSalaryHike'];
+            });
+
+            var PercentSalaryHike_scale = d3.scale.linear()
+                                        .range([height, margin])
+                                        .domain(percentSalaryHire_extent);
+
+            
+            var axisY = d3.svg.axis().scale(PercentSalaryHike_scale).orient("left");
+
+            //Append svg with x and y axis from above
+            d3.select("svg#scatter")
+            .append('g')
+            .attr('class', 'x axis')
+            .attr('transform', "translate(0," + height + ")")
+            .call(axisX);
+
+            scattersvg.append("text")
+                        .attr("text-anchor", "end")
+                        .attr("x", width)
+                        .attr("y", height + 20 + 20)
+                        .text("Number of employees in the company");
+                        
+
+            d3.select("svg#scatter")
+            .append('g')
+            .attr('class', 'y axis')
+            .attr('transform', "translate(" + margin + ",0)")
+            .call(axisY);
+
+            scattersvg.append("text")
+            .attr("text-anchor", "end")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 20)
+            .attr("x", -20)
+            .text("Percentage Salary Hike");
+
+            var scatter_data = d3.nest()
+                               .key(function (d) { return d['PercentSalaryHike'] ;})
+                               .rollup(function(t) { 
+                                    return d3.sum(t, function(d) { return d['EmployeeCount']; });
+                               }) 
+                               .entries(data);
+
+            var radius_scale = d3.scale.sqrt().domain([0, employeeCount_extent[1].values]).range([0, 12]);
+
+            scattersvg.selectAll("circle")
+                .data(scatter_data)
+                .enter()
+                .append("circle")
+                .attr('cx', function(d) { return employeeCount_scale(d.values); })
+                .attr('cy', function(d) { return PercentSalaryHike_scale(d.key); })
+                .attr('r', function(d) { return radius_scale(d.values)})
+                .attr('fill', 'IndianRed');
+
+            /////////////////////////////////////////////////////////////////////////////////////////////
+            //lineplot stuff
+            d3.select("body")
+                .append("h2")
+                .text("Job Satisfaction as Total Working Years Increases")
+                .style("text-align", "center");
+
+            //lineplot svg
+            var linesvg = d3.select("body")
+                            .append("svg")
+                            .attr("width", width + margin)
+                            .attr("height", height + margin)
+                            .attr('class', 'chart');
+
+            
+            var myChart = new dimple.chart(linesvg, data);
+            var x = myChart.addCategoryAxis("x", "TotalWorkingYears");
+            x.addOrderRule("TotalWorkingYears");
+            var y = myChart.addMeasureAxis("y", "JobSatisfaction");
+            var series = myChart.addSeries(null, dimple.plot.line);
+            myChart.draw();
+
+            /////////////////////////////////////////////////////////////////////////////////////////////////////
+            //bar svg
+            d3.select("body")
+            .append("h2")
+            .text("Attrition & Environment Satisfaction vs Job Satisfaction")
+            .style("text-align", "center");
+            
+            var barsvg = d3.select("body")
+                            .append("svg")
+                            .attr("width", width + margin)
+                            .attr("height", height + margin)
+                            .attr('class', 'chart');
+
+            var chart2 = new dimple.chart(barsvg, data);
+            var x = chart2.addCategoryAxis("x", ["Attrition", "EnvironmentSatisfaction"]);
+            chart2.addColorAxis("EnvironmentSatisfaction", ["#DA9694", "#FABF8F", "#C4D79B"]);
+            var y = chart2.addMeasureAxis("y", "JobSatisfaction");
+            var series = chart2.addSeries(null, dimple.plot.bar);
+            chart2.draw();
+
+        }//end plot attrition function
+    }//end draw function
+      </script>
+	  
+  </head>
+<body>
+  <script type="text/javascript">
+  /*
+    Use D3 to load the GeoJSON file
+    */
+    
+d3.json("USA.json", draw);
+  </script>
+  
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+    <style>
+    </style>
+    <script type="text/javascript"> 
+      format = d3.time.format("%d-%m-%Y (%H:%M h)");
+ 
+      function draw(geo_data) {
+	  //Defines that JavaScript code should be executed in "strict mode".
+        "use strict";
+		//Declare static varaiables for SVG
+        var margin = 75,
+            width = 1400 - margin,
+            height = 600 - margin;
+
+			//Standard D3 code to create SVG element with class of map
+        var svg = d3.select("body")
+            .append("svg")
+            .attr("width", width + margin)
+            .attr("height", height + margin)
+            .append('g')
+            .attr('class', 'map');
+
+        console.log(geo_data);
+
+        //mercator projector
+        //scale() used to zoom
+        //translate() used to center map
+        var merc_projection = d3.geo.mercator().scale(450).translate([width / 0.9, height / 0.75]);
+        //sets current projection of positions array
+
+        var path = d3.geo.path().projection(merc_projection);
+
+        var map = svg.selectAll('path')
+                  .data(geo_data.features)
+                  .enter()
+                  .append('path')
+                  .attr('d', path)
+                  .style('fill', 'Thistle')
+                  .style('stroke', 'black')
+                  .style('stroke-width', 0.5);
+
+        //console.log(geo_data.features.length);
+
+        
+	  
+        d3.csv("HR-Employee-Attrition.csv", plot_attrition);
+
+        function plot_attrition(data) {
+            //code to create dots
+            var aggregated_data = d3.nest()
+                                .key(function(d) { return d['Location']; })
+                                .rollup(function(leaves) {
+                                    var total = d3.sum(leaves, function(d) { return d['EmployeeCount']; });
+
+                                    var pixel_coords = leaves.map(function (d) {
+                                        //console.log(leaves);
+                                        
+                                        return merc_projection([+d.Longitude, +d.Latitude]);
+                                  });
+                                    
+                                    //console.log(pixel_coords);
+                                    
+
+                                    var avg_x = d3.mean(pixel_coords, function(d) { return d[0]; });
+                                    var avg_y = d3.mean(pixel_coords, function(d) { return d[1]; });
+
+                                    return {'totalEmployees' : total,
+                                          'x' : avg_x,
+                                          'y' : avg_y };                                    
+                                })
+                                .entries(data);
+            
+            console.log(aggregated_data);
+        
+            var EmployeeCount_extent = d3.extent(aggregated_data, function(d) { return d.values['totalEmployees']});
+            var radius_scale = d3.scale.sqrt().domain(EmployeeCount_extent).range([0, 12]);
+
+            //display data
+            svg.append('g')
+            .attr("class", "bubble")
+            .selectAll("circle")
+            .data(aggregated_data)
+            .enter()
+            .append("circle")
+            .attr('cx', function(d) { return d.values['x']; })
+            .attr('cy', function(d) { return d.values['y']; })
+            .attr('r', function(d) { 
+                //console.log(d.values['totalEmployees']);
+                return radius_scale(d.values['totalEmployees']); 
+            })
+            .attr('fill', 'OrangeRed')
+            .attr('opacity', '0.4')
+            .attr('stroke', 'black');
+        
+        }
+    }
+      </script>
+	  
+  </head>
+<body>
+  <script type="text/javascript">
+  /*
+    Use D3 to load the GeoJSON file
+    */
+    
+d3.json("USA.json", draw);
+  </script>
+  <p style="text-align: center"><button onclick="history.back()">Back</button></p>
+</body>
+</html>
